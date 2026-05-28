@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+
+      - name: Sync dependencies (dev extras)
+        run: uv sync --extra dev
+
+      - name: Lint with ruff
+        run: uv run ruff check src/ tests/
+
+      - name: Type-check with ruff format (smoke)
+        run: uv run ruff format --check src/ tests/
+
+      - name: Run tests
+        run: uv run pytest tests/ -v --tb=short -m "not gpu and not integration"
+
+      - name: Verify pyproject.toml builds
+        run: uv build --wheel
