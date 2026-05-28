@@ -16,12 +16,24 @@ Apache 2.0.
 from __future__ import annotations
 
 import importlib.util
+import warnings
 from collections.abc import Iterator
 from pathlib import Path
 
 import numpy as np
 
 from padelgraph_ai.schemas import Detection, FrameDetections
+
+
+class YOLOXStubModeWarning(UserWarning):
+    """Emitted when ``Detector`` falls back to stub mode despite a checkpoint.
+
+    Stub mode silently returns zero detections; downstream callers that
+    were expecting real inference (because they supplied ``--checkpoint``)
+    will get an empty pipeline output that *looks* valid. This warning
+    surfaces the fallback so it cannot go unnoticed.
+    """
+
 
 # COCO class ids we keep. Anything else is dropped per story-002 scope
 # (single-cam padel: person + sports ball only).
@@ -99,6 +111,24 @@ class Detector:
         self._stub_mode: bool = self.checkpoint_path is None or not _yolox_available()
         self._model: object | None = None
 
+        # If a checkpoint was supplied but YOLOX is unavailable, the
+        # detector silently degraded to stub mode (returns 0 detections).
+        # That silent fallback is exactly the F1 audit finding — surface
+        # it as both a Python warning (programmatic consumers) and rely
+        # on the CLI layer to emit a click stderr message (human users).
+        if self.checkpoint_path is not None and not _yolox_available():
+            warnings.warn(
+                (
+                    f"STUB MODE active: checkpoint {self.checkpoint_path!s} was "
+                    "provided but the optional 'yolox' package is not installed. "
+                    "Detector.infer() will return 0 detections for every frame. "
+                    "Epic 2 will implement the real YOLOX loader; until then, "
+                    "install YOLOX or omit --checkpoint to silence this warning."
+                ),
+                YOLOXStubModeWarning,
+                stacklevel=2,
+            )
+
         if not self._stub_mode:
             # Real-mode load is deferred to first inference to keep
             # construction cheap and to surface import errors close to
@@ -109,6 +139,11 @@ class Detector:
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
+
+    @property
+    def stub_mode(self) -> bool:
+        """Whether this detector is running in stub mode (returns 0 detections)."""
+        return self._stub_mode
 
     def infer(self, frame: np.ndarray) -> list[Detection]:
         """Run detection on a single BGR uint8 frame.

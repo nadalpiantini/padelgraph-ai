@@ -80,3 +80,12 @@ credentials.json
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Stress test harness outputs (Track 4)
+simulations/
+runs/
+artifacts/stress-test-*.md
+!simulations/.gitkeep
+!runs/.gitkeep
+!artifacts/.gitkeep
+

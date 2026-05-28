@@ -179,3 +179,78 @@ def test_target_fps_defaults_to_min(tmp_path: Path) -> None:
     sync = MultiCamSync([cam1, cam2])
     assert sync.target_fps == pytest.approx(15.0)
     assert sync.cam_ids == ["cam1", "cam2"]
+
+
+# ---------------------------------------------------------------------------
+# Edge case tests (F3 + F6 audit)
+# ---------------------------------------------------------------------------
+
+
+def test_sync_negative_offset_clamped(tmp_path: Path) -> None:
+    """Large negative offset must NOT crash or skip the camera entirely.
+
+    Sync semantics: ``offsets_seconds[i]`` is *added* to the common
+    timeline to produce ``target_ts``. A large negative offset means
+    the camera's timeline only intersects the common timeline far
+    in the future (here: common-ts in ``[100, 101]`` for a 1s video
+    with offset ``-100``). The iterator must:
+
+    - never raise (e.g. on the early batches where the cam is
+      pre-timeline and is silently skipped per the ``align`` contract)
+    - eventually yield the cam's frames when the common timeline
+      catches up to its window
+    - and terminate cleanly once the cam's duration is exhausted
+    """
+    cam1 = tmp_path / "cam1.mp4"
+    _write_synthetic_video(cam1, duration_seconds=1.0, fps=30.0)
+
+    sync = MultiCamSync([cam1], offsets_seconds=[-100.0])
+    # Materializing the iterator must not raise. We don't assert on
+    # the exact batch count (sync.align's batch_index is unbounded
+    # while waiting for the cam to come online), but we do assert
+    # that every yielded batch contains cam1 (the ``if frames``
+    # guard in ``align`` prevents empty batches), and that we
+    # terminate at all.
+    batches = list(sync.align())
+    assert all("cam1" in b.frames for b in batches), (
+        "negative-offset cam should never produce empty batches"
+    )
+
+    # And: every yielded batch's common timestamp falls inside the
+    # window where the cam is actually addressable, [|offset|, |offset| + duration].
+    if batches:
+        assert all(100.0 <= b.ts < 101.01 for b in batches), (
+            "batches outside the [100, 101] window indicate a sync bug"
+        )
+
+
+def test_sync_seek_failure_counter(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """``_seek_and_read`` must update counters and ``report_seek_stats`` must surface."""
+    cam1 = tmp_path / "cam1.mp4"
+    _write_synthetic_video(cam1, duration_seconds=1.0, fps=30.0)
+    sync = MultiCamSync([cam1])
+
+    # Patch the bound seek+read to always fail. We swap the *instance*
+    # method on this specific sync so other tests are unaffected.
+    def _always_fail(_self: MultiCamSync, _cap: object, cam_id: str, _ts: float):
+        # Mirror the increment behavior of the real method so counter
+        # semantics are exercised end-to-end.
+        _self._seek_attempts[cam_id] += 1
+        _self._seek_failures[cam_id] += 1
+        return None
+
+    monkeypatch.setattr(MultiCamSync, "_seek_and_read", _always_fail)
+
+    batches = list(sync.align())
+    # First batch: the cam fails → marked ended → loop terminates.
+    assert batches == []
+
+    failures, attempts = sync.seek_stats["cam1"]
+    assert attempts >= 1
+    assert failures == attempts  # every attempt failed
+
+    # >5% failure rate (it's 100% here) must produce a warning line.
+    messages = sync.report_seek_stats()
+    assert len(messages) == 1
+    assert "cam1" in messages[0]
+    assert "seek failures" in messages[0]

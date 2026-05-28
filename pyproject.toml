@@ -86,4 +86,5 @@ markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "gpu: marks tests requiring GPU",
     "integration: marks integration tests requiring real video files",
+    "scenarios: marks synthetic tournament/match/error simulator tests (Track 2)",
 ]

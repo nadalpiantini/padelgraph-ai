@@ -26,6 +26,7 @@ Apache 2.0.
 
 from __future__ import annotations
 
+import time
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -35,6 +36,17 @@ import numpy as np
 from padelgraph_ai.schemas import SyncedFrameBatch
 
 __all__ = ["MultiCamSync"]
+
+# F3: how aggressively the sync module retries a transient seek+read
+# failure before giving up on the frame. Two attempts (1 initial + 1
+# retry) with a small backoff is enough to absorb the codec-buffer hiccup
+# we hit in practice without paying noticeable wall-clock cost on the
+# happy path (real seek failures stay rare).
+_SEEK_RETRY_ATTEMPTS: int = 2
+_SEEK_RETRY_BACKOFF_S: float = 0.1
+# Above this fraction (per camera, of *attempted* seeks) we surface a
+# warning in MultiCamSync.report_seek_stats() — below it we stay silent.
+_SEEK_FAILURE_WARN_THRESHOLD: float = 0.05
 
 
 class MultiCamSync:
@@ -111,6 +123,14 @@ class MultiCamSync:
 
         self._cam_ids: list[str] = [f"cam{i + 1}" for i in range(len(self._video_paths))]
 
+        # F3: per-camera seek bookkeeping. ``_seek_attempts`` counts every
+        # call to ``cap.set + cap.read`` (including retries). ``_seek_failures``
+        # counts the calls that still failed after all retries — i.e. the
+        # ones the caller actually sees as a missing frame. The ratio of
+        # the two is what ``report_seek_stats`` decides on.
+        self._seek_attempts: dict[str, int] = {cam_id: 0 for cam_id in self._cam_ids}
+        self._seek_failures: dict[str, int] = {cam_id: 0 for cam_id in self._cam_ids}
+
     @property
     def cam_ids(self) -> list[str]:
         """Camera identifiers (``cam1``, ``cam2``, ...) in input order."""
@@ -121,12 +141,30 @@ class MultiCamSync:
         """Effective sampling rate of the aligned output."""
         return self._target_fps
 
+    @property
+    def seek_stats(self) -> dict[str, tuple[int, int]]:
+        """Return ``{cam_id: (failures, attempts)}`` accumulated by ``align``.
+
+        ``attempts`` counts every ``cap.set + cap.read`` call (including
+        retries). ``failures`` counts those that still failed after all
+        retries — i.e. frames the caller saw as missing.
+        """
+        return {
+            cam_id: (self._seek_failures[cam_id], self._seek_attempts[cam_id])
+            for cam_id in self._cam_ids
+        }
+
     def align(self) -> Iterator[SyncedFrameBatch]:
         """Yield :class:`SyncedFrameBatch` instances at ``1/target_fps`` spacing.
 
         Each batch is keyed by camera id. Cameras whose video has ended are
         absent from the ``frames`` dict (never present with a ``None`` value).
         Iteration stops when every camera has ended.
+
+        Per-camera seek failures are retried up to
+        ``_SEEK_RETRY_ATTEMPTS`` times with a short backoff to absorb
+        codec-buffer hiccups; persistent failures are recorded in
+        :pyattr:`seek_stats` and surfaced by :py:meth:`report_seek_stats`.
         """
         captures: list[cv2.VideoCapture] = [cv2.VideoCapture(str(p)) for p in self._video_paths]
         try:
@@ -154,9 +192,11 @@ class MultiCamSync:
                         ended[i] = True
                         continue
 
-                    cap.set(cv2.CAP_PROP_POS_MSEC, target_ts * 1000.0)
-                    ok, frame = cap.read()
-                    if not ok or frame is None:
+                    frame = self._seek_and_read(cap, self._cam_ids[i], target_ts)
+                    if frame is None:
+                        # Persistent seek failure after retries — treat as
+                        # end-of-stream for this camera. The counters
+                        # were already updated by ``_seek_and_read``.
                         ended[i] = True
                         continue
                     frames[self._cam_ids[i]] = frame
@@ -173,3 +213,55 @@ class MultiCamSync:
         finally:
             for cap in captures:
                 cap.release()
+
+    def _seek_and_read(
+        self,
+        cap: cv2.VideoCapture,
+        cam_id: str,
+        target_ts: float,
+    ) -> np.ndarray | None:
+        """Seek ``cap`` to ``target_ts`` seconds and return the frame.
+
+        Retries up to ``_SEEK_RETRY_ATTEMPTS`` times with a short backoff
+        between attempts. Every attempt is reflected in
+        :pyattr:`seek_stats`, with the final outcome (success or
+        persistent failure) recorded in the per-camera counters.
+        """
+        last_frame: np.ndarray | None = None
+        for attempt in range(_SEEK_RETRY_ATTEMPTS):
+            self._seek_attempts[cam_id] += 1
+            cap.set(cv2.CAP_PROP_POS_MSEC, target_ts * 1000.0)
+            ok, frame = cap.read()
+            if ok and frame is not None:
+                last_frame = frame
+                break
+            if attempt + 1 < _SEEK_RETRY_ATTEMPTS:
+                time.sleep(_SEEK_RETRY_BACKOFF_S)
+
+        if last_frame is None:
+            self._seek_failures[cam_id] += 1
+        return last_frame
+
+    def report_seek_stats(self) -> list[str]:
+        """Return a list of human-readable warnings for cameras over threshold.
+
+        A camera is reported when more than
+        ``_SEEK_FAILURE_WARN_THRESHOLD`` of its seek+read attempts
+        ultimately failed (after retries). Cameras under threshold are
+        silent so the orchestrator only logs when something is actually
+        wrong. Returns an empty list when every camera is healthy.
+        """
+        messages: list[str] = []
+        for cam_id in self._cam_ids:
+            attempts = self._seek_attempts[cam_id]
+            failures = self._seek_failures[cam_id]
+            if attempts == 0:
+                continue
+            failure_rate = failures / attempts
+            if failure_rate > _SEEK_FAILURE_WARN_THRESHOLD:
+                messages.append(
+                    f"WARNING: {cam_id} had {failures}/{attempts} seek failures "
+                    f"({failure_rate * 100:.1f}%) after retries — output for this "
+                    "camera is incomplete; check codec / file integrity."
+                )
+        return messages

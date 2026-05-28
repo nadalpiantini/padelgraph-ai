@@ -160,10 +160,26 @@ class Homography:
     Construct via :py:meth:`from_keypoints` rather than the bare initializer.
     """
 
+    # A determinant smaller than this is treated as singular. The value is
+    # generous (1e-12) — well below any geometry produced by 4 keypoints
+    # that span a real-world frame but large enough to reject the wildly
+    # degenerate matrices that cv2.getPerspectiveTransform returns when
+    # the 4 input points are collinear or coincident.
+    _SINGULAR_DET_THRESHOLD: float = 1e-12
+
     def __init__(self, matrix: np.ndarray, court_dim_meters: tuple[float, float]) -> None:
         if matrix.shape != (3, 3):
             raise ValueError(f"Homography matrix must be 3x3, got {matrix.shape}")
-        self._matrix = np.asarray(matrix, dtype=np.float64)
+        matrix_f64 = np.asarray(matrix, dtype=np.float64)
+        det = float(np.linalg.det(matrix_f64))
+        if not np.isfinite(det) or abs(det) < self._SINGULAR_DET_THRESHOLD:
+            raise ValueError(
+                "Homography matrix is singular or near-singular "
+                f"(det={det:.3e}); the 4 court keypoints are likely "
+                "collinear, coincident, or otherwise degenerate. Re-pick "
+                "the corners so they form a proper quadrilateral."
+            )
+        self._matrix = matrix_f64
         self._inverse = np.linalg.inv(self._matrix)
         self._court_dim_meters = court_dim_meters
 

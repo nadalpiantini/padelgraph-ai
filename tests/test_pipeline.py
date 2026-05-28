@@ -198,3 +198,84 @@ def test_cli_rejects_missing_required_flag(tmp_path: Path, flag: str) -> None:
     # entering the orchestrator path.
     result = runner.invoke(main, [flag, "/nonexistent/path"])
     assert result.exit_code != 0
+
+
+# ---------------------------------------------------------------------------
+# Edge case tests (F6 audit)
+# ---------------------------------------------------------------------------
+
+
+def test_pipeline_handles_corrupt_video(tmp_path: Path) -> None:
+    """A non-video file passed as ``--video`` must error gracefully, not crash.
+
+    We forge a tiny binary file with a .mp4 extension so Click's ``exists``
+    check passes; the failure must surface from MultiCamSync (which probes
+    each video for FPS / duration on construction) rather than as an
+    uncaught traceback bubbling out of cv2 deep in the loop.
+    """
+    fake_video = tmp_path / "garbage.mp4"
+    fake_video.write_bytes(b"not actually an mp4 \x00\x01\x02\x03" * 4)
+
+    # We still need a real calibration JSON so Click can parse far enough
+    # to hit the cv2 layer where the corruption is detected.
+    calib_path = tmp_path / "calib.json"
+    calib_path.write_text(json.dumps([_calibration_dict("cam1")]), encoding="utf-8")
+
+    out_path = tmp_path / "out.json"
+    runner = CliRunner()
+    result = runner.invoke(
+        main,
+        [
+            "--video",
+            str(fake_video),
+            "--calib",
+            str(calib_path),
+            "--out",
+            str(out_path),
+        ],
+        catch_exceptions=True,
+    )
+
+    # The pipeline must NOT exit cleanly (the input is broken). The contract
+    # here is: surface a non-zero exit code (Click's UsageError path is
+    # exit-2; an uncaught ValueError/RuntimeError gets a non-zero too) and
+    # do NOT write a partial output JSON.
+    assert result.exit_code != 0
+    assert not out_path.exists()
+
+
+def test_pipeline_handles_missing_calibration_field(tmp_path: Path) -> None:
+    """Malformed calibration JSON must surface a friendly error (F4)."""
+    cam1 = tmp_path / "cam1.mp4"
+    cam2 = tmp_path / "cam2.mp4"
+    _write_synthetic_video(cam1, seed=1)
+    _write_synthetic_video(cam2, seed=2)
+
+    # Build a calibration JSON whose first entry is missing ``extrinsics``.
+    good = _calibration_dict("cam2")
+    bad = _calibration_dict("cam1")
+    bad.pop("extrinsics")
+    calib_path = tmp_path / "calib.json"
+    calib_path.write_text(json.dumps([bad, good]), encoding="utf-8")
+
+    out_path = tmp_path / "out.json"
+    runner = CliRunner()
+    result = runner.invoke(
+        main,
+        [
+            "--video",
+            str(cam1),
+            "--video",
+            str(cam2),
+            "--calib",
+            str(calib_path),
+            "--out",
+            str(out_path),
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code != 0
+    # The friendly error must name both the offending camera and field
+    # so the user knows exactly what to fix.
+    assert "cam1" in result.output
+    assert "extrinsics" in result.output

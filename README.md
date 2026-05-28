@@ -28,6 +28,35 @@ Process video from 1–4 cameras filming a padel match (including just phones) a
 | Shot classifier custom | ⏳ planned | mes 6 |
 | Integration with padelgraph-app | ⏳ planned | mes 9 |
 
+## Known Limitations (Epic 1 MVP)
+
+The current release is the MVP scaffold. Some surfaces work end-to-end against
+synthetic data, but the following are intentionally deferred — every item
+below is documented here so the CLI never *silently* misbehaves:
+
+- **YOLOX checkpoint loader is an Epic 2 stub.** Passing `--checkpoint <path>`
+  is parsed and the file existence is validated, but if the optional `yolox`
+  package is not installed the detector silently falls back to **stub mode**
+  and returns 0 detections per frame. A `UserWarning` (and a stderr `WARNING:`
+  line from the CLI) is emitted whenever this fallback kicks in so the empty
+  output cannot go unnoticed. Install YOLOX or omit `--checkpoint` to silence
+  the warning.
+- **Court keypoints are picked manually.** `CourtDetector.detect_keypoints`
+  opens an interactive `cv2` window for the user to click the four corners.
+  There is no auto-detection — that lands in Epic 2.
+- **Multi-camera fusion is limited to 2 cameras.** The triangulator and CLI
+  both run with `N >= 1`, but the MVP is only validated against 2 cameras;
+  4-camera support and confidence-weighted N-cam fusion are Epic 2.
+- **No pose tracking.** BlazePose integration is mes 2.
+- **Single-ball assumption.** The pipeline keeps the highest-confidence
+  `sports ball` detection per frame; doubles-ball edge cases (e.g. a ball
+  bouncing back into play during a rally) are not modeled.
+- **Long-video memory profile is untested.** Videos longer than ~30 minutes
+  may degrade performance — the MVP smoke suite only exercises ~1s synthetic
+  clips.
+- **No real-time inference.** Everything is post-process only; streaming /
+  on-the-fly inference is out of scope for Epic 1.
+
 ## Install
 
 Requires Python 3.12, [uv](https://docs.astral.sh/uv/).

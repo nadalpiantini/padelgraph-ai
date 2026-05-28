@@ -103,3 +103,41 @@ def test_detect_keypoints_non_interactive_returns_none() -> None:
     random_frame = np.random.randint(0, 256, size=(720, 1280, 3), dtype=np.uint8)
 
     assert detector.detect_keypoints(random_frame, interactive=False) is None
+
+
+# ---------------------------------------------------------------------------
+# Edge case tests (F6 audit)
+# ---------------------------------------------------------------------------
+
+
+def test_homography_singular_matrix() -> None:
+    """Degenerate keypoints (all collinear) must surface a clear error.
+
+    When all 4 ``CourtKeypoints`` lie on the same line the perspective
+    transform is singular: ``cv2.getPerspectiveTransform`` either
+    returns a non-invertible matrix or raises. Either way the user
+    deserves a recognizable exception (``ValueError`` or ``cv2.error``
+    wrapped via ``np.linalg.LinAlgError`` for the inverse) — never a
+    silent garbage transform — and the error message must make the
+    degeneracy obvious.
+    """
+
+    # Four points on a single horizontal line — no perspective info.
+    collinear = CourtKeypoints(
+        top_left=(0.0, 100.0),
+        top_right=(500.0, 100.0),
+        bottom_right=(1000.0, 100.0),
+        bottom_left=(1500.0, 100.0),
+    )
+
+    with pytest.raises((np.linalg.LinAlgError, ValueError, RuntimeError)) as excinfo:
+        Homography.from_keypoints(collinear)
+
+    # Whatever flavor of exception the underlying stack throws, the
+    # message must hint at the singular / degenerate / non-invertible
+    # cause so the user can map it back to the keypoint geometry.
+    msg = str(excinfo.value).lower()
+    assert any(
+        marker in msg
+        for marker in ("singular", "degenerate", "non-invertible", "linalg", "transform")
+    ), f"unexpected error message: {msg!r}"
