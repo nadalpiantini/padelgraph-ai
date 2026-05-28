@@ -204,8 +204,7 @@ def _run(
     calibrations = _load_calibrations(calib_path)
     if len(calibrations) != len(videos):
         raise click.UsageError(
-            f"calibration count ({len(calibrations)}) must match video count "
-            f"({len(videos)})"
+            f"calibration count ({len(calibrations)}) must match video count ({len(videos)})"
         )
 
     sync = MultiCamSync(videos)
@@ -254,9 +253,7 @@ def _run(
 
             ball_3d = triangulator.triangulate(ball_pixel_per_cam)
             ball_confidence = (
-                min(d.confidence for d in best_ball_per_cam.values())
-                if best_ball_per_cam
-                else 0.0
+                min(d.confidence for d in best_ball_per_cam.values()) if best_ball_per_cam else 0.0
             )
             frames.append(
                 FrameAnalysis(
@@ -288,13 +285,9 @@ def _run(
                         overlay_size = (width, height)
                         overlay_path.parent.mkdir(parents=True, exist_ok=True)
                         fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-                        video_writer = cv2.VideoWriter(
-                            str(overlay_path), fourcc, fps, overlay_size
-                        )
+                        video_writer = cv2.VideoWriter(str(overlay_path), fourcc, fps, overlay_size)
                         if not video_writer.isOpened():
-                            raise RuntimeError(
-                                f"Could not open VideoWriter for {overlay_path}"
-                            )
+                            raise RuntimeError(f"Could not open VideoWriter for {overlay_path}")
                     video_writer.write(overlay_frame)
     finally:
         if video_writer is not None:

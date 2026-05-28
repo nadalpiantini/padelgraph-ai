@@ -116,14 +116,10 @@ def test_sync_stops_when_all_end(tmp_path: Path) -> None:
 
     # After cam1 ends, batches should contain only cam2.
     cam1_present_ts = [b.ts for b in batches if "cam1" in b.frames]
-    cam2_only_ts = [
-        b.ts for b in batches if "cam2" in b.frames and "cam1" not in b.frames
-    ]
+    cam2_only_ts = [b.ts for b in batches if "cam2" in b.frames and "cam1" not in b.frames]
     assert cam1_present_ts, "cam1 should appear in early batches"
     assert cam2_only_ts, "cam2 should outlive cam1"
-    assert max(cam1_present_ts) < min(cam2_only_ts), (
-        "cam1 must end before cam2-only batches start"
-    )
+    assert max(cam1_present_ts) < min(cam2_only_ts), "cam1 must end before cam2-only batches start"
 
     # Frame indices are monotonic and contiguous.
     indices = [b.frame_index for b in batches]

@@ -98,11 +98,16 @@ def test_cli_end_to_end_synthetic(tmp_path: Path) -> None:
     result = runner.invoke(
         main,
         [
-            "--video", str(cam1),
-            "--video", str(cam2),
-            "--calib", str(calib_path),
-            "--out", str(out_path),
-            "--max-frames", "5",
+            "--video",
+            str(cam1),
+            "--video",
+            str(cam2),
+            "--calib",
+            str(calib_path),
+            "--out",
+            str(out_path),
+            "--max-frames",
+            "5",
         ],
         catch_exceptions=False,
     )
@@ -136,9 +141,12 @@ def test_cli_requires_matching_video_calib_count(tmp_path: Path) -> None:
     result = runner.invoke(
         main,
         [
-            "--video", str(cam1),
-            "--calib", str(calib_path),
-            "--out", str(out_path),
+            "--video",
+            str(cam1),
+            "--calib",
+            str(calib_path),
+            "--out",
+            str(out_path),
         ],
         catch_exceptions=False,
     )
@@ -154,9 +162,7 @@ def test_cli_supports_calib_dict_shape(tmp_path: Path) -> None:
 
     calib_path = tmp_path / "calib.json"
     calib_path.write_text(
-        json.dumps(
-            {"cameras": [_calibration_dict("cam1"), _calibration_dict("cam2")]}
-        ),
+        json.dumps({"cameras": [_calibration_dict("cam1"), _calibration_dict("cam2")]}),
         encoding="utf-8",
     )
 
@@ -165,11 +171,16 @@ def test_cli_supports_calib_dict_shape(tmp_path: Path) -> None:
     result = runner.invoke(
         main,
         [
-            "--video", str(cam1),
-            "--video", str(cam2),
-            "--calib", str(calib_path),
-            "--out", str(out_path),
-            "--max-frames", "3",
+            "--video",
+            str(cam1),
+            "--video",
+            str(cam2),
+            "--calib",
+            str(calib_path),
+            "--out",
+            str(out_path),
+            "--max-frames",
+            "3",
         ],
         catch_exceptions=False,
     )

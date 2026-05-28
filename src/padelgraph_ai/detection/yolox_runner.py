@@ -118,9 +118,7 @@ class Detector:
         returns ``[]`` so callers can still exercise the pipeline.
         """
         if frame.ndim != 3 or frame.shape[2] != 3:
-            raise ValueError(
-                f"Expected (H, W, 3) BGR frame, got shape {frame.shape!r}"
-            )
+            raise ValueError(f"Expected (H, W, 3) BGR frame, got shape {frame.shape!r}")
         if frame.dtype != np.uint8:
             raise ValueError(f"Expected uint8 frame, got dtype {frame.dtype!r}")
 
@@ -142,8 +140,7 @@ class Detector:
             import cv2  # local import: opencv is heavy
         except ImportError as exc:  # pragma: no cover — opencv is a hard dep
             raise ImportError(
-                "opencv-python is required for infer_video; install with"
-                " 'uv sync'"
+                "opencv-python is required for infer_video; install with 'uv sync'"
             ) from exc
 
         video_path = Path(video_path)
@@ -203,8 +200,7 @@ class Detector:
     def _run_model(self, frame: np.ndarray) -> object:  # pragma: no cover — gated
         """Execute the YOLOX forward pass. Extension point for Epic 2."""
         raise RuntimeError(
-            "Detector._run_model() not implemented. See Epic 2 for the "
-            "real YOLOX inference path."
+            "Detector._run_model() not implemented. See Epic 2 for the real YOLOX inference path."
         )
 
     def _postprocess(
@@ -223,9 +219,7 @@ class Detector:
         # Expected raw_outputs shape (post-YOLOX postprocess): tensor of
         # rows [x1, y1, x2, y2, obj_conf, class_conf, class_id].
         for row in raw_outputs:  # type: ignore[union-attr]
-            x1, y1, x2, y2, obj_conf, class_conf, class_id = (
-                float(v) for v in row
-            )
+            x1, y1, x2, y2, obj_conf, class_conf, class_id = (float(v) for v in row)
             confidence = obj_conf * class_conf
             if confidence < self.confidence_threshold:
                 continue

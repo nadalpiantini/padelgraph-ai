@@ -188,9 +188,7 @@ def test_calibration_extrinsics_roundtrip() -> None:
     # Re-project every corner through the recovered extrinsics and check
     # the residual is ≤ε=2 px per spec.
     for world_corner, expected_pixel in zip(corners_world, pixel_corners, strict=True):
-        reprojected = _project_world_point_to_pixel(
-            world_corner, k, recovered_extrinsics
-        )
+        reprojected = _project_world_point_to_pixel(world_corner, k, recovered_extrinsics)
         assert reprojected[0] == pytest.approx(expected_pixel[0], abs=2.0)
         assert reprojected[1] == pytest.approx(expected_pixel[1], abs=2.0)
 
@@ -256,6 +254,5 @@ def test_cv2_solvepnp_ippe_is_available() -> None:
     surfaces an actionable error before users hit the calibration path.
     """
     assert hasattr(cv2, "SOLVEPNP_IPPE"), (
-        "opencv-python >= 4.5 required for SOLVEPNP_IPPE; "
-        "upgrade via 'uv sync'"
+        "opencv-python >= 4.5 required for SOLVEPNP_IPPE; upgrade via 'uv sync'"
     )

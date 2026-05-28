@@ -99,9 +99,7 @@ class MultiCamSync:
                 if fps <= 0:
                     raise ValueError(f"Invalid FPS reported for {path}: {fps}")
                 self._fps_per_cam.append(fps)
-                self._duration_per_cam.append(
-                    frame_count / fps if frame_count > 0 else 0.0
-                )
+                self._duration_per_cam.append(frame_count / fps if frame_count > 0 else 0.0)
             finally:
                 cap.release()
 
@@ -130,9 +128,7 @@ class MultiCamSync:
         absent from the ``frames`` dict (never present with a ``None`` value).
         Iteration stops when every camera has ended.
         """
-        captures: list[cv2.VideoCapture] = [
-            cv2.VideoCapture(str(p)) for p in self._video_paths
-        ]
+        captures: list[cv2.VideoCapture] = [cv2.VideoCapture(str(p)) for p in self._video_paths]
         try:
             for cap, path in zip(captures, self._video_paths, strict=True):
                 if not cap.isOpened():
@@ -154,10 +150,7 @@ class MultiCamSync:
                         # Camera offset puts us before its timeline start.
                         # Skip this cam for this batch but keep it alive.
                         continue
-                    if (
-                        self._duration_per_cam[i] > 0
-                        and target_ts >= self._duration_per_cam[i]
-                    ):
+                    if self._duration_per_cam[i] > 0 and target_ts >= self._duration_per_cam[i]:
                         ended[i] = True
                         continue
 

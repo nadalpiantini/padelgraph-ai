@@ -104,9 +104,7 @@ def compute_extrinsics_from_court_keypoints(
         flags=cv2.SOLVEPNP_IPPE,
     )
     if not success:
-        raise RuntimeError(
-            "cv2.solvePnP failed to recover camera pose from court keypoints"
-        )
+        raise RuntimeError("cv2.solvePnP failed to recover camera pose from court keypoints")
 
     rotation_matrix, _ = cv2.Rodrigues(rvec)
     extrinsics = np.eye(4, dtype=np.float64)

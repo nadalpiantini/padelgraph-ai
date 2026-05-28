@@ -14,7 +14,6 @@ from typing import Any
 import numpy as np
 from pydantic import BaseModel, ConfigDict, Field
 
-
 # ---------------------------------------------------------------------------
 # Detection
 # ---------------------------------------------------------------------------
@@ -59,9 +58,7 @@ class SyncedFrameBatch(BaseModel):
 
     ts: float = Field(ge=0.0, description="Common timestamp in seconds")
     frame_index: int = Field(ge=0, description="Logical batch index (not raw frame number)")
-    frames: dict[str, np.ndarray] = Field(
-        description="cam_id -> frame as np.ndarray (BGR uint8)"
-    )
+    frames: dict[str, np.ndarray] = Field(description="cam_id -> frame as np.ndarray (BGR uint8)")
 
 
 # ---------------------------------------------------------------------------

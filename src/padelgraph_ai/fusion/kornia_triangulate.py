@@ -55,8 +55,7 @@ class Triangulator:
         # Pre-compute 3x4 projection matrices P = K @ [R|t] once per
         # camera so repeat triangulations don't re-do the matmul.
         self._projections: dict[str, np.ndarray] = {
-            cam_id: self._projection_matrix(calib)
-            for cam_id, calib in self._calibrations.items()
+            cam_id: self._projection_matrix(calib) for cam_id, calib in self._calibrations.items()
         }
 
     # ------------------------------------------------------------------ #
@@ -83,9 +82,7 @@ class Triangulator:
         # Filter to cameras we actually have calibration for. Anything
         # else is silently dropped — see class docstring.
         usable: list[tuple[str, tuple[float, float]]] = [
-            (cam_id, xy)
-            for cam_id, xy in points_2d_per_cam.items()
-            if cam_id in self._projections
+            (cam_id, xy) for cam_id, xy in points_2d_per_cam.items() if cam_id in self._projections
         ]
         if len(usable) < 2:
             return None
@@ -128,9 +125,7 @@ class Triangulator:
         """Return the 3x4 projection matrix ``K @ [R|t]`` for ``calib``."""
         k = calib.K()
         if k.shape != (3, 3):
-            raise ValueError(
-                f"Calibration {calib.cam_id} has K shape {k.shape}, expected (3, 3)"
-            )
+            raise ValueError(f"Calibration {calib.cam_id} has K shape {k.shape}, expected (3, 3)")
         rt = calib.Rt()
         if rt.shape == (4, 4):
             rt_3x4 = rt[:3, :4]
